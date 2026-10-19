@@ -1,13 +1,13 @@
 # MaiaRegex - POSIX Regular Expression Library
 
-A lightweight, POSIX-compatible regular expression library written in C, based on the public domain implementation by Ozan S. Yigit.
+A lightweight regular expression library written in C, with a legacy POSIX-shaped text API and a separate C89 instruction-program API for generated lexers. The legacy implementation is based on the public domain implementation by Ozan S. Yigit.
 
 ## Features
 
-- **100% POSIX compliant** - Implements the standard POSIX regex API
+- **Legacy POSIX-shaped API** - Provides `regcomp`, `regexec`, `regerror`, and `regfree` for the documented basic subset, not full POSIX syntax or flags
 - **Lightweight** - Minimal memory footprint, no external dependencies
 - **Fast** - Optimized NFA implementation with character class bit-sets
-- **Thread-safe** - No global state, all context is stored in `regex_t` structures
+- **Independent execution state** - The new program API keeps scratch state local to each call; legacy `regex_t` objects must not be shared between concurrent executions
 - **C and C++ support** - Tested with both languages
 - **Standard features**:
   - Character classes (`[a-z]`, `[^0-9]`, etc.)
@@ -17,7 +17,70 @@ A lightweight, POSIX-compatible regular expression library written in C, based o
   - Back references (`\1` through `\9`)
   - Word boundaries (`\<`, `\>`)
 
-## API Reference
+## Generated Lexer Program API
+
+`maia_regex.h` and `maia_regex.c` provide an additive C89/C++98 interface for
+generators such as MaiaCC. This does not add ECMAScript text-pattern parsing to
+`regcomp`. The generator compiles its patterns into immutable instructions and
+ranges; this library executes them. EBNF token selection, maximal munch, skip
+rules and lexer modes remain the generator's responsibility.
+
+```c
+#include "maia_regex.h"
+
+static const MaiaRegexInstruction code[] = {
+    { MAIA_REGEX_ACCEPT, 0, 0, 0 },
+    { MAIA_REGEX_CHAR, 97, 0, 2 },
+    { MAIA_REGEX_SPLIT, 1, 0, 0 }
+};
+static const MaiaRegexProgram program = { code, 0, 3, 0, 1 };
+```
+
+This program matches `a+`. Call
+`maia_regex_exec(&program, input, length, start, limits, &end)` with an array of
+UTF-16 code units stored in `unsigned int`. Length, start and successful end
+are code-unit offsets, not UTF-8 byte offsets. NUL units and surrogate units
+are supported; input units above 65535 are rejected. A match starts exactly at
+`start` and returns the first successful ordered path. It is not a substring
+search or a POSIX leftmost-longest matcher. The input length must be less than
+`INT_MAX`; a null input is valid only for empty input.
+
+`MaiaRegexProgram` contains `code`, `ranges`, `instruction_count`, `range_count`
+and `entry`. Instructions contain `op`, `first`, `second` and `next`:
+
+| Instruction | Meaning |
+|-------------|---------|
+| `ACCEPT` | Return the current position |
+| `CHAR` | Consume the unit in `first`, continue at `next` |
+| `SPLIT` | Try `first`, then `second` on failure |
+| `CLASS` / `NOT_CLASS` | Consume a unit inside/outside `second` inclusive ranges beginning at `first`, continue at `next` |
+| `END` | Require absolute input end, continue at `next` |
+| `POSITIVE` / `NEGATIVE` | Test the subprogram at `first` without consuming input, continue at `next` when the assertion succeeds |
+
+Ordered branches encode alternatives and greedy/lazy repetition. Matching uses
+an explicit heap stack and memoization, not recursive C calls. Programs are
+validated before execution, including branch targets, range bounds and units.
+`maia_regex_validate()` returns `MAIA_REGEX_MATCH` for a structurally valid
+program. Unused instruction fields are ignored. Cyclic paths at the same
+instruction/input position are cut off to terminate empty repetitions.
+
+Results are `MAIA_REGEX_MATCH`, `MAIA_REGEX_NOMATCH`, `MAIA_REGEX_INVALID`,
+`MAIA_REGEX_NOMEM` or `MAIA_REGEX_LIMIT`. The output `end` is unchanged unless
+matching succeeds. Inputs and program tables are never modified or retained.
+
+Optional `MaiaRegexLimits` fields bound `max_memo_bytes`, `max_frames` and
+`max_steps`. Zero means no caller-imposed limit for that field; arithmetic
+overflow is still rejected. For untrusted input, set finite limits. Memory is
+proportional to instruction count times remaining input length, plus the
+explicit execution stack. Allocation uses standard `malloc`, `calloc`,
+`realloc` and `free`; all scratch allocations are released before return.
+
+`make test` includes the C89 program tests alongside both legacy suites. The
+program implementation can also be compiled independently, without the legacy
+engine or its headers. Native C89/C++98 checks do not alone certify a particular
+MaiaC/WASM build; that is a consumer integration gate.
+
+## Legacy API Reference
 
 ### Error Codes
 
@@ -263,6 +326,12 @@ Benchmark results (10,000 iterations):
 - Maximum character set: 128 characters (ASCII)
 - No support for Unicode (ASCII only)
 - No support for `REG_EXTENDED` syntax (basic regex only)
+
+These limitations describe the legacy text API, not the generated-program API.
+The legacy compiler may accept unsupported syntax as literal characters;
+applications must not pass ECMAScript patterns to it expecting equivalent
+semantics. `REG_ICASE`, `REG_NOSUB`, `REG_NEWLINE` and `REG_NOTEOL` are not fully
+implemented flags despite their declarations.
 
 ## Portability
 
