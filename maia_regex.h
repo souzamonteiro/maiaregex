@@ -18,19 +18,19 @@
 #define MAIA_REGEX_NEGATIVE 6
 #define MAIA_REGEX_POSITIVE 7
 
-typedef struct {
+typedef struct MaiaRegexInstruction {
     int op;
     unsigned int first;
     unsigned int second;
     unsigned int next;
 } MaiaRegexInstruction;
 
-typedef struct {
+typedef struct MaiaRegexRange {
     unsigned int first;
     unsigned int last;
 } MaiaRegexRange;
 
-typedef struct {
+typedef struct MaiaRegexProgram {
     const MaiaRegexInstruction *code;
     const MaiaRegexRange *ranges;
     unsigned int instruction_count;
@@ -38,7 +38,7 @@ typedef struct {
     unsigned int entry;
 } MaiaRegexProgram;
 
-typedef struct {
+typedef struct MaiaRegexLimits {
     size_t max_memo_bytes;
     size_t max_frames;
     size_t max_steps;
