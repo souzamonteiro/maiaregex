@@ -6,7 +6,7 @@ CFLAGS = -Wall -Wextra -O2 -g -std=c99
 CXXFLAGS = -Wall -Wextra -O2 -g -std=c++11
 LDFLAGS = 
 
-TARGETS = libregex.a test_regex_c test_regex_cpp test_regex_program
+TARGETS = libregex.a test_regex_c test_regex_cpp test_regex_program test_regex_program_reference
 
 all: $(TARGETS)
 
@@ -19,6 +19,9 @@ maia_regex.o: maia_regex.c maia_regex.h
 test_regex_program: test_regex_program.c maia_regex.o
 	$(CC) -Wall -Wextra -O2 -std=c89 -pedantic-errors -o $@ $^
 
+test_regex_program_reference: test_regex_program_reference.c maia_regex.o
+	$(CC) -Wall -Wextra -O2 -std=c89 -pedantic-errors -o $@ $^
+
 regex.o: regex.c regex.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -28,8 +31,9 @@ test_regex_c: test_regex.c libregex.a
 test_regex_cpp: test_regex.cpp libregex.a
 	$(CXX) $(CXXFLAGS) -o $@ test_regex.cpp -L. -lregex $(LDFLAGS)
 
-test: test_regex_c test_regex_cpp test_regex_program
+test: test_regex_c test_regex_cpp test_regex_program test_regex_program_reference
 	./test_regex_program
+	./test_regex_program_reference
 	@echo "\n=== Running C tests ===\n"
 	./test_regex_c
 	@echo "\n=== Running C++ tests ===\n"

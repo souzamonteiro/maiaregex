@@ -2,10 +2,16 @@
 #include <stdlib.h>
 #include <limits.h>
 
+#define MEMO_UNVISITED 0
+#define MEMO_VISITING -2
+#define MEMO_FAILED -1
+
 typedef struct {
     unsigned int instruction;
     unsigned int position;
     int phase;
+    size_t assertion_depth;
+    size_t cycle_epoch;
 } MaiaRegexFrame;
 
 int maia_regex_validate(const MaiaRegexProgram *program)
@@ -46,6 +52,7 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
                     const MaiaRegexLimits *limits, unsigned int *end)
 {
     size_t columns, cells, slot, capacity, depth, steps, next_capacity;
+    size_t active, cycle_epoch;
     int *memo;
     MaiaRegexFrame *frames, *grown, *frame;
     const MaiaRegexInstruction *code;
@@ -67,6 +74,7 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
     capacity = 64;
     if (limits && limits->max_frames && capacity > limits->max_frames)
         capacity = limits->max_frames;
+    if (capacity > (size_t)-1 / sizeof(MaiaRegexFrame)) return MAIA_REGEX_LIMIT;
     memo = (int *)calloc(cells, sizeof(int));
     if (!memo) return MAIA_REGEX_NOMEM;
     frames = (MaiaRegexFrame *)malloc(capacity * sizeof(MaiaRegexFrame));
@@ -74,7 +82,10 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
     frames[0].instruction = program->entry;
     frames[0].position = start;
     frames[0].phase = 0;
+    frames[0].assertion_depth = 0;
+    frames[0].cycle_epoch = 0;
     depth = 1;
+    cycle_epoch = 0;
     steps = 0;
     last = -1;
     result = MAIA_REGEX_MATCH;
@@ -91,12 +102,30 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
         child_instruction = 0;
         child_position = frame->position;
         if (frame->phase == 0) {
-            if (memo[slot]) {
+            if (memo[slot] == MEMO_VISITING) {
+                /* An empty cycle cuts a path; a cycle across an assertion
+                 * boundary would recursively define the assertion itself. */
+                for (active = depth - 1; active > 0; --active) {
+                    if (frames[active - 1].instruction == frame->instruction
+                        && frames[active - 1].position == frame->position) break;
+                }
+                if (!active || frames[active - 1].assertion_depth != frame->assertion_depth) {
+                    result = MAIA_REGEX_INVALID;
+                    break;
+                }
+                if (cycle_epoch == (size_t)-1) { result = MAIA_REGEX_LIMIT; break; }
+                ++cycle_epoch;
+                last = -1;
+                --depth;
+                continue;
+            }
+            if (memo[slot] != MEMO_UNVISITED) {
                 last = memo[slot] > 0 ? memo[slot] - 1 : -1;
                 --depth;
                 continue;
             }
-            memo[slot] = -1;
+            memo[slot] = MEMO_VISITING;
+            frame->cycle_epoch = cycle_epoch;
             last = -1;
             if (code->op == MAIA_REGEX_ACCEPT) { last = (int)frame->position; done = 1; }
             else if (code->op == MAIA_REGEX_SPLIT) {
@@ -147,7 +176,10 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
             } else { last = -1; done = 1; }
         } else done = 1;
         if (done) {
-            memo[slot] = last < 0 ? -1 : last + 1;
+            /* Cycle-pruned results depend on active ancestors and cannot
+             * be reused after that context has changed. */
+            memo[slot] = frame->cycle_epoch != cycle_epoch
+                ? MEMO_UNVISITED : (last < 0 ? MEMO_FAILED : last + 1);
             --depth;
         } else if (descend) {
             if (limits && limits->max_frames && depth >= limits->max_frames) {
@@ -167,6 +199,9 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
                 frames = grown;
                 capacity = next_capacity;
             }
+            frames[depth].assertion_depth = frames[depth - 1].assertion_depth
+                + (frames[depth - 1].phase == 4 ? 1 : 0);
+            frames[depth].cycle_epoch = cycle_epoch;
             frames[depth].instruction = child_instruction;
             frames[depth].position = child_position;
             frames[depth].phase = 0;

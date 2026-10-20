@@ -21,6 +21,32 @@ static void expect(const MaiaRegexProgram *program, const unsigned int *input,
     verify(result == status && end == (status == MAIA_REGEX_MATCH ? expected_end : 1234567), name);
 }
 
+static void test_cycle_context(void)
+{
+    MaiaRegexInstruction code[] = {
+        { MAIA_REGEX_ACCEPT, 0, 0, 0 },
+        { MAIA_REGEX_CHAR, 98, 0, 0 },
+        { MAIA_REGEX_CHAR, 97, 0, 1 },
+        { MAIA_REGEX_CHAR, 97, 0, 0 },
+        { MAIA_REGEX_SPLIT, 5, 2, 0 },
+        { MAIA_REGEX_SPLIT, 4, 3, 0 },
+        { MAIA_REGEX_CHAR, 122, 0, 0 },
+        { MAIA_REGEX_POSITIVE, 4, 0, 6 },
+        { MAIA_REGEX_SPLIT, 7, 5, 0 }
+    };
+    MaiaRegexProgram program;
+    unsigned int input[] = { 97, 98 };
+    program.code = code;
+    program.ranges = 0;
+    program.instruction_count = 9;
+    program.range_count = 0;
+    program.entry = 8;
+    expect(&program, input, 2, 0, 0, MAIA_REGEX_MATCH, 2, "cycle-pruned assertion results are not cached across contexts");
+    expect(&program, input, 1, 0, 0, MAIA_REGEX_MATCH, 1, "ordered cycle fallback remains available");
+    code[7].op = MAIA_REGEX_NEGATIVE;
+    expect(&program, input, 2, 0, 0, MAIA_REGEX_MATCH, 2, "negative assertion does not cache cycle-dependent results");
+}
+
 int main(void)
 {
     MaiaRegexInstruction code[] = {
@@ -65,6 +91,16 @@ int main(void)
     code[2].first = 2;
     code[2].second = 0;
     expect(&program, input, 3, 0, 0, MAIA_REGEX_MATCH, 0, "epsilon cycle terminates");
+    code[2].second = 2;
+    expect(&program, input, 3, 0, 0, MAIA_REGEX_NOMATCH, 0, "program without reachable accept terminates");
+    code[2].op = MAIA_REGEX_NEGATIVE;
+    code[2].first = 2;
+    code[2].next = 0;
+    expect(&program, input, 3, 0, 0, MAIA_REGEX_INVALID, 0, "recursive negative assertion has no defined truth value");
+    code[2].op = MAIA_REGEX_POSITIVE;
+    expect(&program, input, 3, 0, 0, MAIA_REGEX_INVALID, 0, "recursive positive assertion is rejected consistently");
+    code[2].op = MAIA_REGEX_SPLIT;
+    code[2].second = 0;
     code[2].first = 99;
     expect(&program, input, 3, 0, 0, MAIA_REGEX_INVALID, 0, "invalid branch");
     code[2].first = 1;
@@ -111,6 +147,7 @@ int main(void)
     input[0] = 65536;
     expect(&program, input, 1, 0, 0, MAIA_REGEX_INVALID, 0, "invalid input code unit");
     verify(maia_regex_exec(&program, input, 0, 0, 0, 0) == MAIA_REGEX_INVALID, "null result pointer");
+    test_cycle_context();
     printf("MAIA_REGEX_PROGRAM: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

@@ -62,7 +62,13 @@ an explicit heap stack and memoization, not recursive C calls. Programs are
 validated before execution, including branch targets, range bounds and units.
 `maia_regex_validate()` returns `MAIA_REGEX_MATCH` for a structurally valid
 program. Unused instruction fields are ignored. Cyclic paths at the same
-instruction/input position are cut off to terminate empty repetitions.
+instruction/input position are cut off to terminate empty repetitions. If the
+repeated active state crosses an assertion boundary, execution returns
+`MAIA_REGEX_INVALID`; it does not assign a truth value to a recursive assertion.
+Results that observed a cycle cut are not memoized across contexts. A valid
+program without a reachable `ACCEPT` can return `MAIA_REGEX_NOMATCH`; structural
+validation does not prove reachability or assertion termination. Unreachable
+branches are not executed.
 
 Results are `MAIA_REGEX_MATCH`, `MAIA_REGEX_NOMATCH`, `MAIA_REGEX_INVALID`,
 `MAIA_REGEX_NOMEM` or `MAIA_REGEX_LIMIT`. The output `end` is unchanged unless
@@ -75,7 +81,10 @@ proportional to instruction count times remaining input length, plus the
 explicit execution stack. Allocation uses standard `malloc`, `calloc`,
 `realloc` and `free`; all scratch allocations are released before return.
 
-`make test` includes the C89 program tests alongside both legacy suites. The
+`make test` includes the C89 program tests and 100,000 deterministic graph/input
+comparisons against an independent ordered DFS without memoization, alongside
+both legacy suites. See [program semantics](PROGRAM_SEMANTICS.md) for the cycle
+contract, a regression against the original runtime, and verification commands. The
 program implementation can also be compiled independently, without the legacy
 engine or its headers. Native C89/C++98 checks do not alone certify a particular
 MaiaC/WASM build; that is a consumer integration gate.
