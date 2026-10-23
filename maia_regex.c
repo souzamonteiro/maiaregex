@@ -14,6 +14,75 @@ typedef struct {
     size_t cycle_epoch;
 } MaiaRegexFrame;
 
+/* Keys remain occupied when a cycle-pruned value becomes UNVISITED again. */
+typedef struct {
+    size_t key;
+    int value;
+} MaiaRegexMemoEntry;
+
+typedef struct {
+    MaiaRegexMemoEntry *entries;
+    size_t capacity;
+    size_t used;
+} MaiaRegexMemo;
+
+static size_t maia_regex_memo_hash(size_t key, size_t capacity)
+{
+    key ^= key >> 16;
+    key *= 2654435761UL;
+    key ^= key >> 16;
+    return key & (capacity - 1);
+}
+
+static int *maia_regex_memo_slot(MaiaRegexMemo *memo, size_t cell, int *status)
+{
+    size_t key, at, probe, next_capacity, index, target;
+    MaiaRegexMemoEntry *grown;
+    /* The logical dense-size preflight bounds cell below SIZE_MAX / sizeof(int). */
+    key = cell + 1;
+    at = maia_regex_memo_hash(key, memo->capacity);
+    for (probe = 0; probe < memo->capacity; ++probe) {
+        if (memo->entries[at].key == key) return &memo->entries[at].value;
+        if (!memo->entries[at].key) break;
+        at = (at + 1) & (memo->capacity - 1);
+    }
+    if (probe == memo->capacity) { *status = MAIA_REGEX_LIMIT; return 0; }
+    if (memo->used >= memo->capacity / 2) {
+        if (memo->capacity > (size_t)-1 / sizeof(MaiaRegexMemoEntry) / 2) {
+            *status = MAIA_REGEX_LIMIT; return 0;
+        }
+        next_capacity = memo->capacity * 2;
+        grown = (MaiaRegexMemoEntry *)calloc(next_capacity, sizeof(MaiaRegexMemoEntry));
+        if (!grown) { *status = MAIA_REGEX_NOMEM; return 0; }
+        for (index = 0; index < memo->capacity; ++index) {
+            if (!memo->entries[index].key) continue;
+            target = maia_regex_memo_hash(memo->entries[index].key, next_capacity);
+            for (probe = 0; probe < next_capacity; ++probe) {
+                if (!grown[target].key) break;
+                target = (target + 1) & (next_capacity - 1);
+            }
+            if (probe == next_capacity) {
+                free(grown); *status = MAIA_REGEX_LIMIT; return 0;
+            }
+            grown[target].key = memo->entries[index].key;
+            grown[target].value = memo->entries[index].value;
+        }
+        free(memo->entries);
+        memo->entries = grown;
+        memo->capacity = next_capacity;
+        at = maia_regex_memo_hash(key, next_capacity);
+        for (probe = 0; probe < next_capacity; ++probe) {
+            if (!memo->entries[at].key) break;
+            at = (at + 1) & (next_capacity - 1);
+        }
+        if (probe == next_capacity) { *status = MAIA_REGEX_LIMIT; return 0; }
+    }
+    memo->entries[at].key = key;
+    memo->entries[at].value = MEMO_UNVISITED;
+    ++memo->used;
+    return &memo->entries[at].value;
+}
+
 int maia_regex_validate(const MaiaRegexProgram *program)
 {
     unsigned int index;
@@ -53,7 +122,8 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
 {
     size_t columns, cells, slot, capacity, depth, steps, next_capacity;
     size_t active, cycle_epoch;
-    int *memo;
+    int *memo, *memo_value;
+    MaiaRegexMemo sparse;
     MaiaRegexFrame *frames, *grown, *frame;
     const MaiaRegexInstruction *code;
     const MaiaRegexRange *range;
@@ -75,10 +145,19 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
     if (limits && limits->max_frames && capacity > limits->max_frames)
         capacity = limits->max_frames;
     if (capacity > (size_t)-1 / sizeof(MaiaRegexFrame)) return MAIA_REGEX_LIMIT;
-    memo = (int *)calloc(cells, sizeof(int));
-    if (!memo) return MAIA_REGEX_NOMEM;
+    memo = 0;
+    sparse.entries = 0; sparse.capacity = 16; sparse.used = 0;
+    /* Explicit byte budgets retain the original allocation and limit semantics. */
+    if ((limits && limits->max_memo_bytes)
+        || cells <= 16 * sizeof(MaiaRegexMemoEntry) / sizeof(int)) {
+        memo = (int *)calloc(cells, sizeof(int));
+        if (!memo) return MAIA_REGEX_NOMEM;
+    } else {
+        sparse.entries = (MaiaRegexMemoEntry *)calloc(16, sizeof(MaiaRegexMemoEntry));
+        if (!sparse.entries) return MAIA_REGEX_NOMEM;
+    }
     frames = (MaiaRegexFrame *)malloc(capacity * sizeof(MaiaRegexFrame));
-    if (!frames) { free(memo); return MAIA_REGEX_NOMEM; }
+    if (!frames) { free(memo); free(sparse.entries); return MAIA_REGEX_NOMEM; }
     frames[0].instruction = program->entry;
     frames[0].position = start;
     frames[0].phase = 0;
@@ -96,13 +175,15 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
         }
         frame = frames + depth - 1;
         slot = (size_t)frame->instruction * columns + frame->position - start;
+        memo_value = memo ? memo + slot : maia_regex_memo_slot(&sparse, slot, &result);
+        if (!memo_value) break;
         code = program->code + frame->instruction;
         descend = 0;
         done = 0;
         child_instruction = 0;
         child_position = frame->position;
         if (frame->phase == 0) {
-            if (memo[slot] == MEMO_VISITING) {
+            if (*memo_value == MEMO_VISITING) {
                 /* An empty cycle cuts a path; a cycle across an assertion
                  * boundary would recursively define the assertion itself. */
                 for (active = depth - 1; active > 0; --active) {
@@ -119,12 +200,12 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
                 --depth;
                 continue;
             }
-            if (memo[slot] != MEMO_UNVISITED) {
-                last = memo[slot] > 0 ? memo[slot] - 1 : -1;
+            if (*memo_value != MEMO_UNVISITED) {
+                last = *memo_value > 0 ? *memo_value - 1 : -1;
                 --depth;
                 continue;
             }
-            memo[slot] = MEMO_VISITING;
+            *memo_value = MEMO_VISITING;
             frame->cycle_epoch = cycle_epoch;
             last = -1;
             if (code->op == MAIA_REGEX_ACCEPT) { last = (int)frame->position; done = 1; }
@@ -178,7 +259,7 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
         if (done) {
             /* Cycle-pruned results depend on active ancestors and cannot
              * be reused after that context has changed. */
-            memo[slot] = frame->cycle_epoch != cycle_epoch
+            *memo_value = frame->cycle_epoch != cycle_epoch
                 ? MEMO_UNVISITED : (last < 0 ? MEMO_FAILED : last + 1);
             --depth;
         } else if (descend) {
@@ -210,6 +291,7 @@ int maia_regex_exec(const MaiaRegexProgram *program, const unsigned int *input,
     }
     free(frames);
     free(memo);
+    free(sparse.entries);
     if (result != MAIA_REGEX_MATCH) return result;
     if (last < 0) return MAIA_REGEX_NOMATCH;
     *end = (unsigned int)last;

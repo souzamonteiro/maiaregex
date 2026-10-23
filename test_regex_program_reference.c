@@ -72,7 +72,11 @@ int main(void)
         MAIA_REGEX_POSITIVE, MAIA_REGEX_NEGATIVE
     };
     MaiaRegexInstruction code[MAX_CODE];
-    MaiaRegexProgram program;
+    MaiaRegexProgram program, padded_program;
+    MaiaRegexInstruction padded[128];
+    MaiaRegexLimits dense_limits;
+    unsigned int sparse_end, dense_end, budget, frame_budget;
+    int sparse_status, dense_status;
     MaiaRegexLimits limits = { 0, 128, 100000 };
     unsigned int input[MAX_INPUT];
     unsigned int trial, index, position, length, start, end;
@@ -108,7 +112,39 @@ int main(void)
                    trial, status, expected_status, end, expected);
             return 1;
         }
+        /* Unreachable ACCEPT padding forces sparse selection without changing
+         * the reference graph. Explicit memo budgets select the dense path. */
+        for (index = 0; index < 128; ++index) {
+            if (index < program.instruction_count) padded[index] = code[index];
+            else { padded[index].op = MAIA_REGEX_ACCEPT; padded[index].first = 0;
+                padded[index].second = 0; padded[index].next = 0; }
+        }
+        padded_program = program; padded_program.code = padded;
+        padded_program.instruction_count = 128;
+        dense_limits = limits;
+        dense_limits.max_memo_bytes = 128 * ((size_t)length - start + 1) * sizeof(int);
+        sparse_end = dense_end = 1234567;
+        sparse_status = maia_regex_exec(&padded_program, input, length, start, &limits, &sparse_end);
+        dense_status = maia_regex_exec(&padded_program, input, length, start, &dense_limits, &dense_end);
+        if (sparse_status != status || dense_status != status || sparse_end != end || dense_end != end) {
+            printf("Dense/sparse/reference mismatch at trial %u\n", trial); return 1;
+        }
+        if (trial < 256) {
+            for (budget = 1; budget <= 8; ++budget) {
+                for (frame_budget = 1; frame_budget <= 8; ++frame_budget) {
+                    limits.max_steps = dense_limits.max_steps = budget;
+                    limits.max_frames = dense_limits.max_frames = frame_budget;
+                    sparse_end = dense_end = 1234567;
+                    sparse_status = maia_regex_exec(&padded_program, input, length, start, &limits, &sparse_end);
+                    dense_status = maia_regex_exec(&padded_program, input, length, start, &dense_limits, &dense_end);
+                    if (sparse_status != dense_status || sparse_end != dense_end) {
+                        printf("Dense/sparse limit mismatch at trial %u\n", trial); return 1;
+                    }
+                }
+            }
+            limits.max_steps = 100000; limits.max_frames = 128;
+        }
     }
-    printf("MAIA_REGEX_REFERENCE: 100000 comparisons, 0 failures\n");
+    printf("MAIA_REGEX_REFERENCE: 100000 DFS/dense/sparse comparisons + 16384 resource comparisons, 0 failures\n");
     return 0;
 }

@@ -77,12 +77,22 @@ matching succeeds. Inputs and program tables are never modified or retained.
 Optional `MaiaRegexLimits` fields bound `max_memo_bytes`, `max_frames` and
 `max_steps`. Zero means no caller-imposed limit for that field; arithmetic
 overflow is still rejected. For untrusted input, set finite limits. Memory is
-proportional to instruction count times remaining input length, plus the
-explicit execution stack. Allocation uses standard `malloc`, `calloc`,
+dense when `max_memo_bytes` is nonzero, preserving its exact logical-size
+preflight and allocation budget. Otherwise, sufficiently large tables use sparse
+per-call storage for visited instruction/position states. Small tables retain
+dense storage when cheaper than the initial 16-entry hash table. Sparse storage
+uses power-of-two tables at most half full, checked growth and bounded probing;
+it retains keys for cycle-pruned UNVISITED values. No scratch state is shared or
+retained across calls. Per-state overhead and temporary old/new tables during
+growth can exceed dense storage for densely visited graphs. There is no universal
+speedup, linear-time or embedded-memory guarantee; input validation still scans
+the remaining suffix on every invocation. Explicit stack depth and transition
+step limits retain their semantics. Allocation uses standard `malloc`, `calloc`,
 `realloc` and `free`; all scratch allocations are released before return.
 
 `make test` includes the C89 program tests and 100,000 deterministic graph/input
-comparisons against an independent ordered DFS without memoization, alongside
+comparisons against an independent ordered DFS without memoization on both dense
+and forced-sparse paths, plus 16,384 frame/step-limit comparisons, alongside
 both legacy suites. See [program semantics](PROGRAM_SEMANTICS.md) for the cycle
 contract, a regression against the original runtime, and verification commands. The
 program implementation can also be compiled independently, without the legacy
@@ -420,3 +430,20 @@ This README provides comprehensive documentation including:
 - Limitations
 - Apache 2.0 license
 - Acknowledgments and version history
+
+
+## Scratch-storage regression checks
+
+`make test` also runs `test_regex_program_sparse`: forced collisions/growth,
+cycle-pruned key retention, every allocation failure in dense and sparse runs,
+no leaked allocations, unchanged failure end offsets and exact explicit memo
+budget boundaries. A 65536-unit immediate failure requests 256 bytes of sparse
+memo on 64-bit native builds versus 33554944 bytes of dense memo; these are
+requested bytes, not a runtime timing or peak resident-memory claim.
+See PROGRAM_SEMANTICS.md for sanitizer/C++98 commands. Consumers must validate
+actual MaiaC/WASM builds through their own published submodules.
+
+The already-versioned native library and legacy test artifacts are regenerated
+by `make test` alongside source changes, following the owner's artifact-review
+policy. Sanitizer binaries and new program-test executables remain outside Git
+or ignored; no release version or npm publication is implied.

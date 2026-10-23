@@ -6,7 +6,7 @@ CFLAGS = -Wall -Wextra -O2 -g -std=c99
 CXXFLAGS = -Wall -Wextra -O2 -g -std=c++11
 LDFLAGS = 
 
-TARGETS = libregex.a test_regex_c test_regex_cpp test_regex_program test_regex_program_reference
+TARGETS = libregex.a test_regex_c test_regex_cpp test_regex_program test_regex_program_reference test_regex_program_sparse
 
 all: $(TARGETS)
 
@@ -22,6 +22,9 @@ test_regex_program: test_regex_program.c maia_regex.o
 test_regex_program_reference: test_regex_program_reference.c maia_regex.o
 	$(CC) -Wall -Wextra -O2 -std=c89 -pedantic-errors -o $@ $^
 
+test_regex_program_sparse: test_regex_program_sparse.c maia_regex.c maia_regex.h
+	$(CC) -Wall -Wextra -O2 -std=c89 -pedantic-errors -o $@ test_regex_program_sparse.c
+
 regex.o: regex.c regex.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -31,9 +34,10 @@ test_regex_c: test_regex.c libregex.a
 test_regex_cpp: test_regex.cpp libregex.a
 	$(CXX) $(CXXFLAGS) -o $@ test_regex.cpp -L. -lregex $(LDFLAGS)
 
-test: test_regex_c test_regex_cpp test_regex_program test_regex_program_reference
+test: test_regex_c test_regex_cpp test_regex_program test_regex_program_reference test_regex_program_sparse
 	./test_regex_program
 	./test_regex_program_reference
+	./test_regex_program_sparse
 	@echo "\n=== Running C tests ===\n"
 	./test_regex_c
 	@echo "\n=== Running C++ tests ===\n"

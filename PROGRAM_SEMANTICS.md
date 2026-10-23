@@ -47,6 +47,10 @@ recursive ordered DFS with an active-path table and no memoization. It compares
 runtime. It covers consuming transitions, ordered alternatives, absolute END,
 positive/negative assertions, unreachable ACCEPT and cyclic graphs. Existing
 program tests separately cover ranges, Unicode, long input and resource limits.
+The same 100000 graphs now run with unreachable instruction padding to force the
+sparse path and with an explicit budget to force dense storage, comparing both
+against the independent reference. Another 16384 frame/step combinations require
+identical dense/sparse outcomes and unchanged failure end offsets.
 This is bounded differential evidence, not a formal proof over all programs.
 
 ## Resource cost
@@ -55,7 +59,20 @@ Dense memo storage is `sizeof(int) * instruction_count * (length - start + 1)`.
 An explicit heap stack stores frames, including assertion depth and cycle epoch.
 Ancestor detection scans that stack on a cycle hit. Avoiding context-dependent
 caches can increase work on cyclic graphs; no linear-time guarantee is claimed.
-Sparse storage remains deferred until measured benchmarks justify it.
+For eligible unbounded-memo calls, sparse scratch follows visited states instead
+of clearing this whole grid. The engine uses the same frame order, transition
+count, active-path cycle detection and cycle epoch; only cell storage differs.
+A key remains occupied even if its value is reset to UNVISITED, preserving probe
+chains and distinguishing a known but context-dependent state from an empty slot.
+
+Nonzero max_memo_bytes always selects the original dense allocation/preflight;
+small logical tables may also stay dense. Unbounded sparse tables start at 16
+entries, grow before exceeding half occupancy and use bounded probing. Growth
+checks size arithmetic and keeps the old table valid until a new table is ready.
+There are no retained cell pointers across growth. Sparse entries use more bytes
+per state than a dense int and temporarily hold old+new allocations on growth;
+densely explored graphs can use more scratch. Input validation still scans every
+remaining input suffix. Neither universal speedup nor linear complexity is claimed.
 
 Callers can bound memo bytes, frames and execution steps. Zero means no
 caller-imposed limit, not a small embedded budget. Overflow checks still apply
@@ -82,3 +99,20 @@ done
 
 Native checks do not certify MaiaC/WASM or downstream lexer integration. Those
 gates must consume a published commit through each consumer's own submodules.
+
+
+The sparse allocation/collision test includes the implementation directly to
+instrument actual private scratch allocations without exposing a new public API:
+
+```sh
+clang -std=c89 -pedantic-errors -Wall -Wextra -Werror \
+  -fsanitize=address,undefined test_regex_program_sparse.c -o /tmp/maiaregex-sparse-test
+/tmp/maiaregex-sparse-test
+clang++ -std=c++98 -pedantic-errors -Wall -Wextra -Werror -x c++ \
+  test_regex_program_sparse.c -o /tmp/maiaregex-sparse-test-cpp98
+/tmp/maiaregex-sparse-test-cpp98
+```
+
+All three suites passed these C89/ASan/UBSan and C++98 gates on 2026-10-23.
+Native evidence does not substitute for consumer WASM integration or a shell
+benchmark; those follow publication through the ecosystem protocol.
