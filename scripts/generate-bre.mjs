@@ -1,0 +1,10 @@
+import fs from 'node:fs';import path from 'node:path';import {fileURLToPath} from 'node:url';import {execFileSync} from 'node:child_process';
+const root=fileURLToPath(new URL('..',import.meta.url));const output=path.resolve(process.argv[2]??path.join(root,'generated'));
+const generator=path.join(root,'tools/maiacpp/maiacc/bin/tREx.sh');if(!fs.existsSync(generator))throw Error('Initialize the pinned tools/maiacpp bootstrap recursively');
+fs.mkdirSync(output,{recursive:true});
+for(const [language,file]of [['javascript','bre-parser.cjs'],['cpp98','bre-parser.hpp']])execFileSync('bash',[generator,'--ebnf','--language',language,'--to-xml',path.join(output,'bre.xml'),path.join(root,'grammar/bre.ebnf'),path.join(output,file)],{stdio:'pipe',cwd:root});
+const header=fs.readFileSync(path.join(output,'bre-parser.hpp'),'utf8');const ids=[...new Set(header.match(/\b(?:maiaCC|MaiaCC)[A-Za-z0-9_]*\b/g))].sort();
+const macros=[...new Set([...header.matchAll(/^#define\s+(MAIACC_\w+)/gm)].map(m=>m[1]))];
+fs.writeFileSync(path.join(output,'bre-prefix.hpp'),ids.map(x=>`#define ${x} MaiaBreGenerated_${x}\n`).join(''));
+fs.writeFileSync(path.join(output,'bre-unprefix.hpp'),[...ids,...macros].map(x=>`#undef ${x}\n`).join(''));
+console.log('Generated BRE JavaScript/XML/C++98 and identifier adapters through pinned MaiaCC');

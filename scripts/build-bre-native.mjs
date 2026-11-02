@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import {execFileSync as run} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+process.chdir(fileURLToPath(new URL('..',import.meta.url)));
+const sanitize=process.argv.includes('--sanitize'),dir=sanitize?'build/bre-sanitize':'build/bre';
+fs.mkdirSync(dir,{recursive:true});
+const flags=sanitize?['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer']:['-O2'];
+const c=['-std=c89','-pedantic-errors','-Wall','-Wextra','-Wno-misleading-indentation',...flags];
+const cpp=['-std=c++98','-pedantic-errors','-Wall','-Wextra','-Wno-unused-function','-Wno-misleading-indentation',...flags];
+for(const [src,obj]of [['maia_bre.c','runtime'],['maia_regex.c','ordered']])run('clang',[...c,'-c',src,'-o',`${dir}/${obj}.o`],{stdio:'inherit'});
+run('clang++',[...cpp,'-I.','-c','maia_bre_compile.cpp','-o',`${dir}/compiler.o`],{stdio:'inherit'});
+for(const [src,name,defines]of [['probe.c','probe',['-DBRE_NATIVE']],['system-reference.c','system-reference',[]],['api.c','api',[]],['concurrent.c','concurrent',['-pthread']]])run('clang',[...c,...defines,`tests/bre/${src}`,`${dir}/runtime.o`,`${dir}/compiler.o`,`${dir}/ordered.o`,'-o',`${dir}/${name}`],{stdio:'inherit'});
+run('clang++',[...cpp,'-I.','-DBRE_FRONT_NATIVE','tests/bre/frontend.cpp',`${dir}/ordered.o`,'-o',`${dir}/frontend`],{stdio:'inherit'});
+run('ar',['rcs',`${dir}/libmaiabre.a`,`${dir}/runtime.o`,`${dir}/compiler.o`,`${dir}/ordered.o`],{stdio:'inherit'});
+console.log(`Built ${dir}: strict C89/C++98${sanitize?' ASan/UBSan':''}`);

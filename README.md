@@ -17,6 +17,46 @@ A lightweight regular expression library written in C, with a legacy POSIX-shape
   - Back references (`\1` through `\9`)
   - Word boundaries (`\<`, `\>`)
 
+## BRE expansion — selected profile validated
+
+An additive UTF-8 BRE API with generated syntax,captures and longest matching
+is specified in [BRE_DESIGN.md](BRE_DESIGN.md). The owner approved the public
+contract and pinned bootstrap. [Progress and reproducible gates](IMPLEMENTATION_STATUS.md)
+record passing native/own-chain WASM tests and the published owner corrections.
+Implementation and selected acceptance gates pass in the working tree; library
+publication and consumer integration remain separate. Existing behavior remains unchanged.
+
+- [x] Generated JS/C++98 syntax and complete native/own-chain WASM frontend parity.
+- [x] UTF-8 captures, references, intervals and hierarchical longest selection in
+  the selected profile, with independent finite/math reference tests.
+- [x] Published compiler prerequisites consumed by an explicitly approved,
+  verified historical bootstrap advancement.
+- [x] Native ASan/UBSan, concurrency, allocation failures and guest resource gates.
+- [x] Final guest allocator-fault gate:420 compile +10 execution sites pass with
+  NOMEM/atomic outputs/no leaks after the published MaiaC function-identity fix.
+- [ ] MaiaRegex Git publication and tested compiler-consumer propagation are now
+  approved; publication is in progress. Shell integration remains separate.
+
+
+## Reproducing the BRE development bootstrap
+
+Ordinary recursive consumers skip `tools/maiacpp` (`update = none`): it is a
+fixed historical development toolchain, not a runtime dependency. This prevents
+`git_pull.sh --remote --recursive` from updating the toolchain's own old Regex
+consumers back into the new library. Initialize development tools explicitly at
+the recorded commits:
+
+```sh
+git submodule update --init --checkout --recursive tools/maiacpp
+node scripts/check-bre-bootstrap.mjs --remote
+make bre-test
+```
+
+Keep `tools/bootstrap-lock.json` exact. A bootstrap upgrade needs a separately
+reviewed pin/lock change; never follow remote branches recursively inside it.
+`node scripts/test-bre-bootstrap-policy.mjs` verifies normal recursive clone,
+explicit initialization and preservation of historical descendant commits.
+
 ## Generated Lexer Program API
 
 `maia_regex.h` and `maia_regex.c` provide an additive C89/C++98 interface for

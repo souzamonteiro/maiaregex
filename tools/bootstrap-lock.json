@@ -1,0 +1,82 @@
+[
+  {
+    "path": "tools/maiacpp",
+    "commit": "a63840339406f0148c7ed5daff8883be5a28ea7f",
+    "remote": "https://github.com/souzamonteiro/maiacpp.git"
+  },
+  {
+    "path": "tools/maiacpp/maiac",
+    "commit": "9793ab934c8c9084459896d542dd4c6cbfca2359",
+    "remote": "https://github.com/souzamonteiro/maiac.git"
+  },
+  {
+    "path": "tools/maiacpp/maiac/maiacc",
+    "commit": "4cf1083372094460118beb4e81b0d301e01da799",
+    "remote": "https://github.com/souzamonteiro/maiacc.git"
+  },
+  {
+    "path": "tools/maiacpp/maiac/maiacc/maiaregex",
+    "commit": "e2ae3a8efa3601e78c3c3c75cf917acf76078e84",
+    "remote": "https://github.com/souzamonteiro/maiaregex.git"
+  },
+  {
+    "path": "tools/maiacpp/maiac/maiaregex",
+    "commit": "e2ae3a8efa3601e78c3c3c75cf917acf76078e84",
+    "remote": "https://github.com/souzamonteiro/maiaregex.git"
+  },
+  {
+    "path": "tools/maiacpp/maiac/maiawasm",
+    "commit": "9a1c1ceeb8d8c643bf7b74e1ce0ebfef57afb68e",
+    "remote": "https://github.com/souzamonteiro/maiawasm.git"
+  },
+  {
+    "path": "tools/maiacpp/maiac/maiawasm/maiacc",
+    "commit": "4cf1083372094460118beb4e81b0d301e01da799",
+    "remote": "https://github.com/souzamonteiro/maiacc.git"
+  },
+  {
+    "path": "tools/maiacpp/maiac/maiawasm/maiacc/maiaregex",
+    "commit": "e2ae3a8efa3601e78c3c3c75cf917acf76078e84",
+    "remote": "https://github.com/souzamonteiro/maiaregex.git"
+  },
+  {
+    "path": "tools/maiacpp/maiac/maiawasm/maiaregex",
+    "commit": "e2ae3a8efa3601e78c3c3c75cf917acf76078e84",
+    "remote": "https://github.com/souzamonteiro/maiaregex.git"
+  },
+  {
+    "path": "tools/maiacpp/maiacc",
+    "commit": "4cf1083372094460118beb4e81b0d301e01da799",
+    "remote": "https://github.com/souzamonteiro/maiacc.git"
+  },
+  {
+    "path": "tools/maiacpp/maiacc/maiaregex",
+    "commit": "e2ae3a8efa3601e78c3c3c75cf917acf76078e84",
+    "remote": "https://github.com/souzamonteiro/maiaregex.git"
+  },
+  {
+    "path": "tools/maiacpp/maiaregex",
+    "commit": "e2ae3a8efa3601e78c3c3c75cf917acf76078e84",
+    "remote": "https://github.com/souzamonteiro/maiaregex.git"
+  },
+  {
+    "path": "tools/maiacpp/maiawasm",
+    "commit": "9a1c1ceeb8d8c643bf7b74e1ce0ebfef57afb68e",
+    "remote": "https://github.com/souzamonteiro/maiawasm.git"
+  },
+  {
+    "path": "tools/maiacpp/maiawasm/maiacc",
+    "commit": "4cf1083372094460118beb4e81b0d301e01da799",
+    "remote": "https://github.com/souzamonteiro/maiacc.git"
+  },
+  {
+    "path": "tools/maiacpp/maiawasm/maiacc/maiaregex",
+    "commit": "e2ae3a8efa3601e78c3c3c75cf917acf76078e84",
+    "remote": "https://github.com/souzamonteiro/maiaregex.git"
+  },
+  {
+    "path": "tools/maiacpp/maiawasm/maiaregex",
+    "commit": "e2ae3a8efa3601e78c3c3c75cf917acf76078e84",
+    "remote": "https://github.com/souzamonteiro/maiaregex.git"
+  }
+]

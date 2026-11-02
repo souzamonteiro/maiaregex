@@ -50,3 +50,41 @@ install:
 	@echo "To install, copy regex.h and maia_regex.h to /usr/local/include and libregex.a to /usr/local/lib"
 
 .PHONY: all test clean install
+
+# Additive BRE development gates. Existing targets and compiler flags stay intact.
+bre-generate:
+	node scripts/generate-bre.mjs
+
+bre-native:
+	node scripts/test-bre-bootstrap-policy.mjs
+	node scripts/check-bre-bootstrap.mjs
+	node scripts/build-bre-native.mjs
+
+bre-test: bre-native
+	node scripts/test-bre-syntax.mjs
+	node scripts/test-bre-frontends.mjs
+	./build/bre/api
+	./build/bre/concurrent
+	node scripts/test-bre-matching.mjs
+	node scripts/test-bre-reference.mjs --native-only
+
+bre-wasm:
+	node --max-old-space-size=16384 scripts/build-bre-wasm.mjs
+	node scripts/test-bre-matching.mjs --wasm
+	node scripts/test-bre-model.mjs
+	node scripts/test-bre-reference.mjs
+	node scripts/test-bre-resources.mjs
+	node scripts/build-bre-fault-wasm.mjs
+	node scripts/test-bre-fault-wasm.mjs
+	node --max-old-space-size=16384 scripts/build-bre-wasm.mjs --frontend
+	node scripts/test-bre-frontends.mjs --wasm
+	node scripts/test-bre-ordered-wasm.mjs
+
+bre-sanitize:
+	node scripts/build-bre-native.mjs --sanitize
+	./build/bre-sanitize/api
+	./build/bre-sanitize/concurrent
+	node scripts/test-bre-matching.mjs --sanitize
+	node scripts/test-bre-allocation.mjs
+
+.PHONY: bre-generate bre-native bre-test bre-wasm bre-sanitize

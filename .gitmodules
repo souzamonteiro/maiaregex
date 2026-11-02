@@ -1,0 +1,4 @@
+[submodule "tools/maiacpp"]
+	path = tools/maiacpp
+	url = https://github.com/souzamonteiro/maiacpp.git
+	update = none

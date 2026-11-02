@@ -1,0 +1,15 @@
+import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {execFileSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
+const require=createRequire(import.meta.url),root=fileURLToPath(new URL('..',import.meta.url)),cpp=path.join(root,'tools/maiacpp');process.chdir(root);
+const {Cpp98Compiler}=require(path.join(cpp,'compiler/cpp-compiler.js'));
+const {compileSource}=require(path.join(cpp,'maiac/compiler/c-compiler.js'));
+const frontend=process.argv.includes('--frontend');
+fs.mkdirSync('build/bre',{recursive:true});
+const emitted=path.join(root,frontend?'build/bre/frontend.c':'generated/bre-compiler.c');
+console.log('Transpiling generated BRE C++98 compiler through pinned MaiaCpp');
+const code=new Cpp98Compiler(path.join(root,frontend?'tests/bre/frontend.cpp':'maia_bre_compile.cpp'),{astStrict:true,legacyFunctionHints:false}).compile();assert.doesNotMatch(code,/stub-fallback|deterministic-fold/);fs.writeFileSync(emitted,code);
+execFileSync('clang',['--target=wasm32-unknown-unknown','-std=c89','-pedantic-errors','-ffreestanding','-Werror=implicit-function-declaration','-fsyntax-only',emitted],{stdio:'inherit'});
+const linked=path.join(root,frontend?'build/bre/frontend-linked.c':'build/bre/linked.c');
+fs.writeFileSync(linked,'#define MAIACPP_USE_C_ALLOCATOR\n'+[path.join(cpp,'maiac/src/stdlib.c'),path.join(cpp,'maiac/src/string.c'),path.join(root,'maia_regex.c'),...(frontend?[emitted]:[path.join(root,'maia_bre.c'),emitted,path.join(root,'tests/bre/probe.c')])].map(p=>`#include "${p}"\n`).join(''));
+console.log('Compiling strict C89 compiler/executor through pinned MaiaC/MaiaWASM');
+const result=compileSource(fs.readFileSync(linked,'utf8'),{sourcePath:linked,resolveSystemIncludes:true,validate:true,serializeParseTrees:false});assert.ok(result.wasm,result.validationError?.message);
+const bytes=Buffer.from(result.wasm),module=new WebAssembly.Module(bytes);console.log(WebAssembly.Module.imports(module));fs.writeFileSync(frontend?'build/bre/frontend.wasm':'build/bre/probe.wasm',bytes);console.log(`BRE own-chain WASM: ${bytes.length} bytes`);
